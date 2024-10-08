@@ -12,6 +12,7 @@ from stable_baselines3.dqn.policies import DQNPolicy
 from collections import deque
 from torch.utils.tensorboard import SummaryWriter
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class MaskedActorCriticPolicy(MultiInputActorCriticPolicy):
     def forward(self, obs, deterministic=False):
@@ -34,15 +35,13 @@ class MaskedActorCriticPolicy(MultiInputActorCriticPolicy):
 
         # Retrieve the valid action mask from obs (assuming it's passed as part of the observation or info)
         if isinstance(obs, dict):
-            mask = torch.ones(self.action_space.n)
+            mask = torch.ones(self.action_space.n, device=device)
             for k, v in obs.items():
                 comps = k.split("_")
                 if comps[0] == "can":
                     mask[int(comps[-1])] = v
         else:
-            mask = torch.ones(
-                self.action_space.n
-            )  # If no mask is provided, assume all actions are valid
+            mask = torch.ones(self.action_space.n, device=device)  # If no mask is provided, assume all actions are valid
 
         # Apply the action mask to the action logits
         distribution.distribution.logits = (
@@ -78,9 +77,6 @@ class MaskedDQNPolicy(DQNPolicy):
         q_values = q_values + (mask.float() - 1) * 1e9
 
         return q_values
-
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Initialize the environment
 env = BuckshotRouletteEnv()
