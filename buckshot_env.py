@@ -24,7 +24,6 @@ class BuckshotRouletteEnv(gym.Env):
             {
                 "charges_self": spaces.Discrete(5),
                 "charges_op": spaces.Discrete(5),
-                
                 "items_player_self_handcuffs": spaces.Discrete(2),
                 "items_player_self_magnifying_glass": spaces.Discrete(2),
                 "items_player_self_beer": spaces.Discrete(2),
@@ -34,7 +33,6 @@ class BuckshotRouletteEnv(gym.Env):
                 "items_player_self_burner_phone": spaces.Discrete(2),
                 "items_player_self_meds": spaces.Discrete(2),
                 "items_player_self_adrenaline": spaces.Discrete(2),
-                
                 "items_player_op_handcuffs": spaces.Discrete(2),
                 "items_player_op_magnifying_glass": spaces.Discrete(2),
                 "items_player_op_beer": spaces.Discrete(2),
@@ -44,7 +42,6 @@ class BuckshotRouletteEnv(gym.Env):
                 "items_player_op_burner_phone": spaces.Discrete(2),
                 "items_player_op_meds": spaces.Discrete(2),
                 "items_player_op_adrenaline": spaces.Discrete(2),
-                
                 "items_active_handcuffs": spaces.Discrete(2),
                 "items_active_magnifying_glass": spaces.Discrete(2),
                 "items_active_beer": spaces.Discrete(2),
@@ -54,10 +51,8 @@ class BuckshotRouletteEnv(gym.Env):
                 "items_active_burner_phone": spaces.Discrete(2),
                 "items_active_meds": spaces.Discrete(2),
                 "items_active_adrenaline": spaces.Discrete(2),
-                
                 "max_charges": spaces.Discrete(3),
                 "current_turn": spaces.Discrete(2),
-                
                 "shell_knowledge_1": spaces.Discrete(3),
                 "shell_knowledge_2": spaces.Discrete(3),
                 "shell_knowledge_3": spaces.Discrete(3),
@@ -66,10 +61,8 @@ class BuckshotRouletteEnv(gym.Env):
                 "shell_knowledge_6": spaces.Discrete(3),
                 "shell_knowledge_7": spaces.Discrete(3),
                 "shell_knowledge_8": spaces.Discrete(3),
-                
                 "shell_count": spaces.Discrete(9),
                 "live_shell_count": spaces.Discrete(9),
-                
                 "can_handcuffs_0": spaces.Discrete(2),
                 "can_magnifying_glass_1": spaces.Discrete(2),
                 "can_beer_2": spaces.Discrete(2),
@@ -100,7 +93,7 @@ class BuckshotRouletteEnv(gym.Env):
 
         self.live_0 = self.game.shotgun_info()[0]
         self.live_1 = self.game.shotgun_info()[0]
-        
+
         self.dealer = BuckshotDealer(1)
 
     def _get_valid_action_mask(self):
@@ -136,9 +129,9 @@ class BuckshotRouletteEnv(gym.Env):
 
         observation = self._get_observation()
         action_mask = self._get_valid_action_mask()
-        
+
         self.dealer = BuckshotDealer(1)
-        
+
         return observation, action_mask  # Return initial observation
 
     def step(self, action):
@@ -159,22 +152,22 @@ class BuckshotRouletteEnv(gym.Env):
 
         # Update the shell knowledge arrays for the current player
         self._update_shell_knowledge(chosen_move, result, known_for=current_player)
-        
+
         while self.game.current_turn != current_player:
             move = self.dealer.choice(self.game)
             res = self.game.make_move(move)
-            
+
             self._update_shell_knowledge(move, res, known_for=1 - current_player)
             self.dealer.post(move, res)
         done = self.game.winner() is not None
-        
+
         known_shells = (
             self.shell_knowledge_player_0
             if self.game.current_turn == 0
             else self.shell_knowledge_player_1
         )
         reward = 1 - (known_shells.count(None) / len(self.game._shotgun))
-        if chosen_move in ['op', 'self']:
+        if chosen_move in ["op", "self"]:
             reward += result * 10
         # Determine if the game is over and who won
         done = self.game.winner() is not None
@@ -193,7 +186,7 @@ class BuckshotRouletteEnv(gym.Env):
             "result": result,
             "current_turn": self.game.current_turn,
             "action_mask": action_mask,
-            "winner": self.game.winner()
+            "winner": self.game.winner(),
         }
 
         return observation, reward, done, False, info
@@ -287,29 +280,36 @@ class BuckshotRouletteEnv(gym.Env):
                 "meds": int(items.meds > 0),
                 "adrenaline": int(items.adrenaline > 0),
             }
-        
+
         shell_knowledge = (
             self.shell_knowledge_player_0
             if self.game.current_turn == 0
             else self.shell_knowledge_player_1
         )
-        
+
         moves = self.game.moves()
-        
+
         observation = {
             "charges_self": self.game.charges[self.game.current_turn],
             "charges_op": self.game.charges[self.game.opponent()],
             "items_player_self": item_dict(self.game.items[self.game.current_turn]),
             "items_player_op": item_dict(self.game.items[self.game.opponent()]),
             "items_active": item_dict(self.game._active_items),
-            "max_charges": self.game.max_charges - 2,  # Because max_charges ranges from 2-4, adjusting to 0-2 for spaces.Discrete(3)
+            "max_charges": self.game.max_charges
+            - 2,  # Because max_charges ranges from 2-4, adjusting to 0-2 for spaces.Discrete(3)
             "current_turn": self.game.current_turn,
-            "shell_knowledge": {str(i+1):1 if x is True else 2 if x is False else 0 for i, x in enumerate(shell_knowledge)},
+            "shell_knowledge": {
+                str(i + 1): 1 if x is True else 2 if x is False else 0
+                for i, x in enumerate(shell_knowledge)
+            },
             "shell_count": len(self.game._shotgun),
             "live_shell_count": sum(1 if x else 0 for x in self.game._shotgun),
-            "can": {f"{item}_{i}": item in moves for i, item in enumerate(self.POSSIBLE_MOVES)}
+            "can": {
+                f"{item}_{i}": item in moves
+                for i, item in enumerate(self.POSSIBLE_MOVES)
+            },
         }
-        
+
         out_dict = {}
         for k, v in observation.items():
             if isinstance(v, dict):
@@ -319,7 +319,6 @@ class BuckshotRouletteEnv(gym.Env):
                 out_dict[k] = v
 
         return out_dict
-            
 
     def render(self, mode="human"):
         """Renders the current state of the game"""

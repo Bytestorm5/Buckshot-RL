@@ -12,6 +12,7 @@ from stable_baselines3.dqn.policies import DQNPolicy
 from collections import deque
 from torch.utils.tensorboard import SummaryWriter
 
+
 class MaskedActorCriticPolicy(MultiInputActorCriticPolicy):
     def forward(self, obs, deterministic=False):
         # Extract the features from the observation
@@ -35,14 +36,18 @@ class MaskedActorCriticPolicy(MultiInputActorCriticPolicy):
         if isinstance(obs, dict):
             mask = torch.ones(self.action_space.n)
             for k, v in obs.items():
-                comps = k.split('_')
-                if comps[0] == 'can':
+                comps = k.split("_")
+                if comps[0] == "can":
                     mask[int(comps[-1])] = v
         else:
-            mask = torch.ones(self.action_space.n)  # If no mask is provided, assume all actions are valid
+            mask = torch.ones(
+                self.action_space.n
+            )  # If no mask is provided, assume all actions are valid
 
         # Apply the action mask to the action logits
-        distribution.distribution.logits = distribution.distribution.logits + (mask.float() - 1) * 1e9
+        distribution.distribution.logits = (
+            distribution.distribution.logits + (mask.float() - 1) * 1e9
+        )
 
         # Sample actions from the distribution (with masked logits)
         actions = distribution.get_actions(deterministic=deterministic)
@@ -55,21 +60,25 @@ class MaskedActorCriticPolicy(MultiInputActorCriticPolicy):
 
         return actions, values, log_prob
 
+
 class MaskedDQNPolicy(DQNPolicy):
     def forward(self, obs):
         # Get the Q-values from the parent class
         q_values = self.q_net(obs)
 
         # Retrieve the valid action mask from obs or info
-        if isinstance(obs, dict) and 'valid_action_mask' in obs:
-            mask = obs['valid_action_mask']
+        if isinstance(obs, dict) and "valid_action_mask" in obs:
+            mask = obs["valid_action_mask"]
         else:
-            mask = torch.ones(q_values.shape[-1])  # Assume all actions are valid if no mask
+            mask = torch.ones(
+                q_values.shape[-1]
+            )  # Assume all actions are valid if no mask
 
         # Set Q-values of invalid actions to a very large negative value
         q_values = q_values + (mask.float() - 1) * 1e9
 
         return q_values
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -100,9 +109,11 @@ batch_size = 75
 class AverageRewardCheckpointCallback(BaseCallback):
     def __init__(self, checkpoint_freq, verbose=0):
         super(AverageRewardCheckpointCallback, self).__init__(verbose)
-        self.checkpoint_freq = checkpoint_freq  # Save checkpoint every 'checkpoint_freq' steps
+        self.checkpoint_freq = (
+            checkpoint_freq  # Save checkpoint every 'checkpoint_freq' steps
+        )
         self.n_steps = 0
-        #self.total_rewards = []
+        # self.total_rewards = []
         self.curr_game_rewards = []
         self.win_history = deque(maxlen=100)
         self.last_end = 0
@@ -110,31 +121,33 @@ class AverageRewardCheckpointCallback(BaseCallback):
     def _on_step(self) -> bool:
         # Gather rewards from the current episode
         self.n_steps += 1
-        rewards = self.locals['rewards']
+        rewards = self.locals["rewards"]
         self.curr_game_rewards += np.sum(rewards)
 
         # Log the average reward after each game
-        
-        if all(self.locals['dones']):  # At the end of a game
-            self.logger.record('buckshot/steps_per_game', self.n_steps - self.last_end)
+
+        if all(self.locals["dones"]):  # At the end of a game
+            self.logger.record("buckshot/steps_per_game", self.n_steps - self.last_end)
             self.last_end = self.n_steps
             avg_reward = self.curr_game_rewards
             self.curr_game_rewards = 0  # Reset for next game
-            self.logger.record('buckshot/reward_per_game', avg_reward)
-            
-            infos = self.locals['infos']
-            won_game = any(info.get('winner', 1) == 0 for info in infos)  # Assuming 'is_success' signals a win
+            self.logger.record("buckshot/reward_per_game", avg_reward)
+
+            infos = self.locals["infos"]
+            won_game = any(
+                info.get("winner", 1) == 0 for info in infos
+            )  # Assuming 'is_success' signals a win
             self.win_history.append(1 if won_game else 0)  # 1 for win, 0 for loss
 
             # Calculate and log the moving average win rate over the last 100 games
             win_rate = np.mean(self.win_history)
-            self.logger.record('buckshot/win_rate_sma100', win_rate)
+            self.logger.record("buckshot/win_rate_sma100", win_rate)
 
         # Save checkpoint at specified intervals
         if self.n_steps % self.checkpoint_freq == 0:
             checkpoint_path = f"ppo_checkpoint_{self.n_steps}_steps.zip"
             self.model.save(checkpoint_path)
-            self.model.save('baseline.zip')
+            self.model.save("baseline.zip")
             print(f"Checkpoint saved at {self.n_steps} steps to {checkpoint_path}")
 
         return True
@@ -146,18 +159,19 @@ class AverageRewardCheckpointCallback(BaseCallback):
 
 # Initialize the callback with a checkpoint frequency, e.g., save every 100,000 steps
 checkpoint_freq = 100000
-avg_reward_checkpoint_callback = AverageRewardCheckpointCallback(checkpoint_freq=checkpoint_freq)
+avg_reward_checkpoint_callback = AverageRewardCheckpointCallback(
+    checkpoint_freq=checkpoint_freq
+)
 
 # Train the agent with the callback
 agent_player_0.learn(
     total_timesteps=n_games * batch_size,
     reset_num_timesteps=True,
     progress_bar=True,
-    callback=avg_reward_checkpoint_callback  # Add the custom callback here
+    callback=avg_reward_checkpoint_callback,  # Add the custom callback here
 )
 
 # Save the trained agents
 agent_player_0.save("baseline")
 
 print("Training completed and models saved.")
-
