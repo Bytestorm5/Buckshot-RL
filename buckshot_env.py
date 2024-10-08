@@ -4,6 +4,8 @@ import numpy as np
 import random
 from copy import deepcopy
 from buckshot_roulette import BuckshotRoulette
+from buckshot_roulette import Items as BuckshotItems
+from buckshot_roulette.ai import Dealer as BuckshotDealer
 import torch
 
 
@@ -22,61 +24,63 @@ class BuckshotRouletteEnv(gym.Env):
             {
                 "charges_self": spaces.Discrete(5),
                 "charges_op": spaces.Discrete(5),
-                "items_player_self": spaces.Dict(
-                    {
-                        "handcuffs": spaces.Discrete(2),
-                        "magnifying_glass": spaces.Discrete(2),
-                        "beer": spaces.Discrete(2),
-                        "saw": spaces.Discrete(2),
-                        "cigarettes": spaces.Discrete(2),
-                        "inverter": spaces.Discrete(2),
-                        "burner_phone": spaces.Discrete(2),
-                        "meds": spaces.Discrete(2),
-                        "adrenaline": spaces.Discrete(2),
-                    }
-                ),
-                "items_player_op": spaces.Dict(
-                    {
-                        "handcuffs": spaces.Discrete(2),
-                        "magnifying_glass": spaces.Discrete(2),
-                        "beer": spaces.Discrete(2),
-                        "saw": spaces.Discrete(2),
-                        "cigarettes": spaces.Discrete(2),
-                        "inverter": spaces.Discrete(2),
-                        "burner_phone": spaces.Discrete(2),
-                        "meds": spaces.Discrete(2),
-                        "adrenaline": spaces.Discrete(2),
-                    }
-                ),
-                "items_active": spaces.Dict(
-                    {
-                        "handcuffs": spaces.Discrete(2),
-                        "magnifying_glass": spaces.Discrete(2),
-                        "beer": spaces.Discrete(2),
-                        "saw": spaces.Discrete(2),
-                        "cigarettes": spaces.Discrete(2),
-                        "inverter": spaces.Discrete(2),
-                        "burner_phone": spaces.Discrete(2),
-                        "meds": spaces.Discrete(2),
-                        "adrenaline": spaces.Discrete(2),
-                    }
-                ),
+                
+                "items_player_self_handcuffs": spaces.Discrete(2),
+                "items_player_self_magnifying_glass": spaces.Discrete(2),
+                "items_player_self_beer": spaces.Discrete(2),
+                "items_player_self_saw": spaces.Discrete(2),
+                "items_player_self_cigarettes": spaces.Discrete(2),
+                "items_player_self_inverter": spaces.Discrete(2),
+                "items_player_self_burner_phone": spaces.Discrete(2),
+                "items_player_self_meds": spaces.Discrete(2),
+                "items_player_self_adrenaline": spaces.Discrete(2),
+                
+                "items_player_op_handcuffs": spaces.Discrete(2),
+                "items_player_op_magnifying_glass": spaces.Discrete(2),
+                "items_player_op_beer": spaces.Discrete(2),
+                "items_player_op_saw": spaces.Discrete(2),
+                "items_player_op_cigarettes": spaces.Discrete(2),
+                "items_player_op_inverter": spaces.Discrete(2),
+                "items_player_op_burner_phone": spaces.Discrete(2),
+                "items_player_op_meds": spaces.Discrete(2),
+                "items_player_op_adrenaline": spaces.Discrete(2),
+                
+                "items_active_handcuffs": spaces.Discrete(2),
+                "items_active_magnifying_glass": spaces.Discrete(2),
+                "items_active_beer": spaces.Discrete(2),
+                "items_active_saw": spaces.Discrete(2),
+                "items_active_cigarettes": spaces.Discrete(2),
+                "items_active_inverter": spaces.Discrete(2),
+                "items_active_burner_phone": spaces.Discrete(2),
+                "items_active_meds": spaces.Discrete(2),
+                "items_active_adrenaline": spaces.Discrete(2),
+                
                 "max_charges": spaces.Discrete(3),
                 "current_turn": spaces.Discrete(2),
-                "shell_knowledge": spaces.Dict(
-                    {
-                        "1": spaces.Discrete(3, start=-1),
-                        "2": spaces.Discrete(3, start=-1),
-                        "3": spaces.Discrete(3, start=-1),
-                        "4": spaces.Discrete(3, start=-1),
-                        "5": spaces.Discrete(3, start=-1),
-                        "6": spaces.Discrete(3, start=-1),
-                        "7": spaces.Discrete(3, start=-1),
-                        "8": spaces.Discrete(3, start=-1),
-                    }
-                ),
+                
+                "shell_knowledge_1": spaces.Discrete(3),
+                "shell_knowledge_2": spaces.Discrete(3),
+                "shell_knowledge_3": spaces.Discrete(3),
+                "shell_knowledge_4": spaces.Discrete(3),
+                "shell_knowledge_5": spaces.Discrete(3),
+                "shell_knowledge_6": spaces.Discrete(3),
+                "shell_knowledge_7": spaces.Discrete(3),
+                "shell_knowledge_8": spaces.Discrete(3),
+                
                 "shell_count": spaces.Discrete(9),
                 "live_shell_count": spaces.Discrete(9),
+                
+                "can_handcuffs_0": spaces.Discrete(2),
+                "can_magnifying_glass_1": spaces.Discrete(2),
+                "can_beer_2": spaces.Discrete(2),
+                "can_cigarettes_3": spaces.Discrete(2),
+                "can_saw_4": spaces.Discrete(2),
+                "can_inverter_5": spaces.Discrete(2),
+                "can_burner_phone_6": spaces.Discrete(2),
+                "can_meds_7": spaces.Discrete(2),
+                "can_adrenaline_8": spaces.Discrete(2),
+                "can_op_9": spaces.Discrete(2),
+                "can_self_10": spaces.Discrete(2),
             }
         )
 
@@ -96,6 +100,8 @@ class BuckshotRouletteEnv(gym.Env):
 
         self.live_0 = self.game.shotgun_info()[0]
         self.live_1 = self.game.shotgun_info()[0]
+        
+        self.dealer = BuckshotDealer(1)
 
     def _get_valid_action_mask(self):
         """
@@ -130,12 +136,15 @@ class BuckshotRouletteEnv(gym.Env):
 
         observation = self._get_observation()
         action_mask = self._get_valid_action_mask()
+        
+        self.dealer = BuckshotDealer(1)
+        
         return observation, action_mask  # Return initial observation
 
     def step(self, action):
         """Applies an action in the environment"""
         # Get the list of available moves and execute the chosen action
-        # possible_moves = self.game.moves()
+        possible_moves = self.game.moves()
         chosen_move = self.POSSIBLE_MOVES[action]
         current_player = self.game.current_turn
 
@@ -144,29 +153,35 @@ class BuckshotRouletteEnv(gym.Env):
             if self.game.current_turn == 0
             else self.shell_knowledge_player_1
         )
-        known_heur = 1 - (known_shells.count(None) / len(self.game._shotgun))
 
         # Perform the chosen move
         result = self.game.make_move(chosen_move)
 
         # Update the shell knowledge arrays for the current player
         self._update_shell_knowledge(chosen_move, result, known_for=current_player)
-
+        
+        while self.game.current_turn != current_player:
+            move = self.dealer.choice(self.game)
+            res = self.game.make_move(move)
+            
+            self._update_shell_knowledge(move, res, known_for=1 - current_player)
+            self.dealer.post(move, res)
+        done = self.game.winner() is not None
+        
         known_shells = (
             self.shell_knowledge_player_0
             if self.game.current_turn == 0
             else self.shell_knowledge_player_1
         )
-        known_heur = (
-            1 - (known_shells.count(None) / len(self.game._shotgun))
-        ) - known_heur
-
+        reward = 1 - (known_shells.count(None) / len(self.game._shotgun))
+        if chosen_move in ['op', 'self']:
+            reward += result * 10
         # Determine if the game is over and who won
         done = self.game.winner() is not None
         reward = (
-            1
+            100
             if self.game.winner() == current_player
-            else -1 if self.game.winner() == 1 - current_player else 0
+            else -100 if self.game.winner() == 1 - current_player else 0
         )
 
         # Get the updated observation
@@ -178,6 +193,7 @@ class BuckshotRouletteEnv(gym.Env):
             "result": result,
             "current_turn": self.game.current_turn,
             "action_mask": action_mask,
+            "winner": self.game.winner()
         }
 
         return observation, reward, done, False, info
@@ -259,39 +275,51 @@ class BuckshotRouletteEnv(gym.Env):
                 ]
 
     def _get_observation(self):
-        """Helper function to gather the current game state"""
+        def item_dict(items: BuckshotItems) -> dict:
+            return {
+                "handcuffs": int(items.handcuffs > 0),
+                "magnifying_glass": int(items.magnifying_glass > 0),
+                "beer": int(items.beer > 0),
+                "saw": int(items.saw > 0),
+                "cigarettes": int(items.cigarettes > 0),
+                "inverter": int(items.inverter > 0),
+                "burner_phone": int(items.burner_phone > 0),
+                "meds": int(items.meds > 0),
+                "adrenaline": int(items.adrenaline > 0),
+            }
+        
         shell_knowledge = (
             self.shell_knowledge_player_0
             if self.game.current_turn == 0
             else self.shell_knowledge_player_1
         )
-        return {
+        
+        moves = self.game.moves()
+        
+        observation = {
             "charges_self": self.game.charges[self.game.current_turn],
-            "charges_op": self.game.charges[1 - self.game.current_turn],
-            "items_player_self": np.array(
-                [
-                    self.game.items[self.game.current_turn][item]
-                    for item in self.game.POSSIBLE_ITEMS
-                ],
-                dtype=np.int32,
-            ),
-            "items_player_op": np.array(
-                [
-                    self.game.items[1 - self.game.current_turn][item]
-                    for item in self.game.POSSIBLE_ITEMS
-                ],
-                dtype=np.int32,
-            ),
+            "charges_op": self.game.charges[self.game.opponent()],
+            "items_player_self": item_dict(self.game.items[self.game.current_turn]),
+            "items_player_op": item_dict(self.game.items[self.game.opponent()]),
+            "items_active": item_dict(self.game._active_items),
+            "max_charges": self.game.max_charges - 2,  # Because max_charges ranges from 2-4, adjusting to 0-2 for spaces.Discrete(3)
             "current_turn": self.game.current_turn,
-            "shell_knowledge": np.array(
-                [1 if x is True else -1 if x is False else 0 for x in shell_knowledge],
-                dtype=np.int32,
-            ),
+            "shell_knowledge": {str(i+1):1 if x is True else 2 if x is False else 0 for i, x in enumerate(shell_knowledge)},
             "shell_count": len(self.game._shotgun),
-            "live_shell_count": (
-                self.live_0 if self.game.current_turn == 0 else self.live_1
-            ),
+            "live_shell_count": sum(1 if x else 0 for x in self.game._shotgun),
+            "can": {f"{item}_{i}": item in moves for i, item in enumerate(self.POSSIBLE_MOVES)}
         }
+        
+        out_dict = {}
+        for k, v in observation.items():
+            if isinstance(v, dict):
+                for k2, v2 in v.items():
+                    out_dict[f"{k}_{k2}"] = v2
+            else:
+                out_dict[k] = v
+
+        return out_dict
+            
 
     def render(self, mode="human"):
         """Renders the current state of the game"""
