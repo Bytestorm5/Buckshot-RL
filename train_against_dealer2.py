@@ -17,11 +17,18 @@ env = BuckshotRouletteEnv()
 env = DummyVecEnv([lambda: env])  # DummyVecEnv to work with SB3
 
 # Initialize two PPO agents, one for Player 0 and one for Player 1
-if os.path.exists('baseline.zip'):
+if os.path.exists("baseline.zip"):
     agent_player_0 = PPO.load("baseline", env, device=device)
 else:
-    agent_player_0 = PPO("MultiInputPolicy", env, verbose=1, tensorboard_log='./ad_agent_player', device=device)
+    agent_player_0 = PPO(
+        "MultiInputPolicy",
+        env,
+        verbose=1,
+        tensorboard_log="./ad_agent_player",
+        device=device,
+    )
 agent_player_dealer = Dealer(1)
+
 
 def preprocess_observation(observation):
     """
@@ -29,6 +36,7 @@ def preprocess_observation(observation):
     """
     # Flatten or convert the observation dictionary to a format that the agent can use
     return {key: torch.tensor(value).float() for key, value in observation.items()}
+
 
 def mask_action_probabilities(agent, observation, action_mask):
     """
@@ -47,7 +55,9 @@ def mask_action_probabilities(agent, observation, action_mask):
     action_probs = action_distribution.distribution.probs
 
     # Apply the action mask (ensure it's on the correct device)
-    action_mask_tensor = torch.as_tensor(action_mask, dtype=torch.float32).to(agent.device)
+    action_mask_tensor = torch.as_tensor(action_mask, dtype=torch.float32).to(
+        agent.device
+    )
 
     # Mask invalid actions by multiplying the action probabilities with the mask
     masked_action_probs = action_probs * action_mask_tensor
@@ -64,12 +74,14 @@ def mask_action_probabilities(agent, observation, action_mask):
 
     return action
 
+
 n_games = 1000000  # Define how many games to play
 train_interval = 2500  # Train after every 10 games
 batch_size = 75  # Number of timesteps per game
 
 current_WR = 0.0
 needs_update = False
+
 
 class TensorboardCallback(BaseCallback):
     """
@@ -87,6 +99,7 @@ class TensorboardCallback(BaseCallback):
             self.logger.record("train/p0_win_rate", current_WR)
         return True
 
+
 # Training loop
 total_reward_player_0 = 0
 for game in range(n_games):
@@ -95,28 +108,29 @@ for game in range(n_games):
     action_mask[-1] = 1.0
     action_mask[-2] = 1.0
     done = False
-    
-    #total_reward_player_1 = 0
+
+    # total_reward_player_1 = 0
 
     while not done:
         current_player = env.envs[0].game.current_turn
-        
+
         if current_player == 0:
             action = mask_action_probabilities(agent_player_0, observation, action_mask)
         else:
             action = agent_player_dealer.choice(env.envs[0].game)
             action = env.envs[0].POSSIBLE_MOVES.index(action)
 
-        
         # Execute the action in the environment
         observation, reward, done, info = env.step([action])
         reward = reward[0]
         done = done[0]
-        action_mask = info[0]['action_mask']
-        
+        action_mask = info[0]["action_mask"]
+
         if current_player == 1:
-            agent_player_dealer.post(env.envs[0].POSSIBLE_MOVES[action], info[0]['result'])
-        
+            agent_player_dealer.post(
+                env.envs[0].POSSIBLE_MOVES[action], info[0]["result"]
+            )
+
         # Accumulate rewards for each player
         if done:
             if current_player == 0:
@@ -125,19 +139,33 @@ for game in range(n_games):
                 total_reward_player_0 += 1 if reward == -1 else 0
 
         if done:
-            print(f"Game {game} finished. Player 0 WR: {100*total_reward_player_0 / (max(game % train_interval, 1)):.2f}%")
+            print(
+                f"Game {game} finished. Player 0 WR: {100*total_reward_player_0 / (max(game % train_interval, 1)):.2f}%"
+            )
 
     # Train after every `train_interval` games
     if game % train_interval == 0 and game != 0:
-        print(f"Training after {game} games (Player WR: {100*total_reward_player_0 / train_interval:.2f}%)")
+        print(
+            f"Training after {game} games (Player WR: {100*total_reward_player_0 / train_interval:.2f}%)"
+        )
         current_WR = 100 * total_reward_player_0 / train_interval
         needs_update = True
         total_reward_player_0 = 0
         # Train each agent for `train_interval` * `batch_size` timesteps (if each game produces `batch_size` timesteps)
-        agent_player_0.learn(total_timesteps=train_interval * batch_size, reset_num_timesteps=False, progress_bar=True, callback=TensorboardCallback())
+        agent_player_0.learn(
+            total_timesteps=train_interval * batch_size,
+            reset_num_timesteps=False,
+            progress_bar=True,
+            callback=TensorboardCallback(),
+        )
         agent_player_0.save("baseline")
 
-agent_player_0.learn(total_timesteps=n_games / train_interval, reset_num_timesteps=False, progress_bar=True, callback=TensorboardCallback())
+agent_player_0.learn(
+    total_timesteps=n_games / train_interval,
+    reset_num_timesteps=False,
+    progress_bar=True,
+    callback=TensorboardCallback(),
+)
 
 # Save the trained agents
 agent_player_0.save("baseline")

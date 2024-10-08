@@ -17,11 +17,18 @@ env = BuckshotRouletteEnv()
 env = DummyVecEnv([lambda: env])  # DummyVecEnv to work with SB3
 
 # Initialize two PPO agents, one for Player 0 and one for Player 1
-if os.path.exists('baseline.zip'):
+if os.path.exists("baseline.zip"):
     agent_player_0 = PPO.load("baseline", env, device=device)
 else:
-    agent_player_0 = PPO("MultiInputPolicy", env, verbose=1, tensorboard_log='./ad_agent_player', device=device)
+    agent_player_0 = PPO(
+        "MultiInputPolicy",
+        env,
+        verbose=1,
+        tensorboard_log="./ad_agent_player",
+        device=device,
+    )
 agent_player_dealer = Dealer(1)
+
 
 def preprocess_observation(observation):
     """
@@ -29,6 +36,7 @@ def preprocess_observation(observation):
     """
     # Flatten or convert the observation dictionary to a format that the agent can use
     return {key: torch.tensor(value).float() for key, value in observation.items()}
+
 
 def mask_action_probabilities(agent, observation, action_mask):
     """
@@ -47,7 +55,9 @@ def mask_action_probabilities(agent, observation, action_mask):
     action_probs = action_distribution.distribution.probs
 
     # Apply the action mask (ensure it's on the correct device)
-    action_mask_tensor = torch.as_tensor(action_mask, dtype=torch.float32).to(agent.device)
+    action_mask_tensor = torch.as_tensor(action_mask, dtype=torch.float32).to(
+        agent.device
+    )
 
     # Mask invalid actions by multiplying the action probabilities with the mask
     masked_action_probs = action_probs * action_mask_tensor
@@ -64,12 +74,14 @@ def mask_action_probabilities(agent, observation, action_mask):
 
     return action
 
+
 n_games = 1000000  # Define how many games to play
 train_interval = 2500  # Train after every 10 games
 batch_size = 75  # Number of timesteps per game
 
 current_WR = 0.0
 needs_update = False
+
 
 class TensorboardCallback(BaseCallback):
     """
@@ -87,7 +99,13 @@ class TensorboardCallback(BaseCallback):
             self.logger.record("train/p0_win_rate", current_WR)
         return True
 
-agent_player_0.learn(total_timesteps=n_games / train_interval, reset_num_timesteps=False, progress_bar=True, callback=TensorboardCallback())
+
+agent_player_0.learn(
+    total_timesteps=n_games / train_interval,
+    reset_num_timesteps=False,
+    progress_bar=True,
+    callback=TensorboardCallback(),
+)
 
 # Save the trained agents
 agent_player_0.save("baseline")
