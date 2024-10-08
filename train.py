@@ -14,6 +14,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
 class MaskedActorCriticPolicy(MultiInputActorCriticPolicy):
     def forward(self, obs, deterministic=False):
         # Extract the features from the observation
@@ -41,7 +42,9 @@ class MaskedActorCriticPolicy(MultiInputActorCriticPolicy):
                 if comps[0] == "can":
                     mask[int(comps[-1])] = v
         else:
-            mask = torch.ones(self.action_space.n, device=device)  # If no mask is provided, assume all actions are valid
+            mask = torch.ones(
+                self.action_space.n, device=device
+            )  # If no mask is provided, assume all actions are valid
 
         # Apply the action mask to the action logits
         distribution.distribution.logits = (
@@ -77,6 +80,7 @@ class MaskedDQNPolicy(DQNPolicy):
         q_values = q_values + (mask.float() - 1) * 1e9
 
         return q_values
+
 
 # Initialize the environment
 env = BuckshotRouletteEnv()
