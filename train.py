@@ -1,7 +1,7 @@
 import gymnasium as gym
 import numpy as np
 from stable_baselines3 import PPO, A2C, DQN
-from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 from buckshot_env import BuckshotRouletteEnv
 import torch
 from buckshot_roulette.ai import Dealer
@@ -12,8 +12,7 @@ from stable_baselines3.dqn.policies import DQNPolicy
 from collections import deque
 from torch.utils.tensorboard import SummaryWriter
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+device = "cpu" #torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class MaskedActorCriticPolicy(MultiInputActorCriticPolicy):
     def forward(self, obs, deterministic=False):
@@ -36,19 +35,19 @@ class MaskedActorCriticPolicy(MultiInputActorCriticPolicy):
 
         # Retrieve the valid action mask from obs (assuming it's passed as part of the observation or info)
         if isinstance(obs, dict):
-            mask = torch.ones(self.action_space.n, device=device)
+            mask = torch.ones((self.action_space.n, features.shape[0]), device=device)
             for k, v in obs.items():
                 comps = k.split("_")
                 if comps[0] == "can":
                     mask[int(comps[-1])] = v
         else:
             mask = torch.ones(
-                self.action_space.n, device=device
+                (self.action_space.n, features.shape[0]), device=device
             )  # If no mask is provided, assume all actions are valid
 
         # Apply the action mask to the action logits
         distribution.distribution.logits = (
-            distribution.distribution.logits + (mask.float() - 1) * 1e9
+            distribution.distribution.logits + (mask.T.float() - 1) * 1e9
         )
 
         # Sample actions from the distribution (with masked logits)
@@ -82,96 +81,88 @@ class MaskedDQNPolicy(DQNPolicy):
         return q_values
 
 
-# Initialize the environment
-env = BuckshotRouletteEnv()
-
-# Wrap the environment to work with Stable Baselines3
-env = DummyVecEnv([lambda: env])  # DummyVecEnv to work with SB3
-
-# Initialize two PPO agents, one for Player 0 and one for Player 1
-if os.path.exists("baseline.zip"):
-    agent_player_0 = PPO.load("baseline", env, device=device)
-else:
-    agent_player_0 = PPO(
-        MaskedActorCriticPolicy,
-        env,
-        verbose=1,
-        tensorboard_log="./log/ad_agent_player",
-        device=device,
-    )
-
-n_games = 1000000
-train_interval = 2500
-batch_size = 75
-
-
 # Define a custom callback for logging the average reward per game and saving checkpoints
 class AverageRewardCheckpointCallback(BaseCallback):
     def __init__(self, checkpoint_freq, verbose=0):
         super(AverageRewardCheckpointCallback, self).__init__(verbose)
-        self.checkpoint_freq = (
-            checkpoint_freq  # Save checkpoint every 'checkpoint_freq' steps
-        )
-        self.n_steps = 0
-        # self.total_rewards = []
-        self.curr_game_rewards = []
-        self.win_history = deque(maxlen=100)
-        self.last_end = 0
+        self.checkpoint_freq = checkpoint_freq
+        self.curr_game_rewards = 0
+        self.win_history = torch.zeros(100, device="cuda")  # Store the win history on GPU as a tensor
+        self.index = 0  # Circular index to track the position in the win history buffer
+        self.total_wins = 0  # Keep track of the total number of wins in the window
 
     def _on_step(self) -> bool:
-        # Gather rewards from the current episode
-        self.n_steps += 1
-        rewards = self.locals["rewards"]
-        self.curr_game_rewards += np.sum(rewards)
+        return True
 
-        # Log the average reward after each game
+    def _on_step(self) -> None:
+        infos = self.locals['infos']  # This contains information across all environments        
 
-        if all(self.locals["dones"]):  # At the end of a game
-            self.logger.record("buckshot/steps_per_game", self.n_steps - self.last_end)
-            self.last_end = self.n_steps
-            avg_reward = self.curr_game_rewards
-            self.curr_game_rewards = 0  # Reset for next game
-            self.logger.record("buckshot/reward_per_game", avg_reward)
+        # Win condition tracking
+        won_games = [info["winner"] == 0 for info in infos if "winner" in info and info['winner'] is not None]
+        
+        if len(won_games) > 0:
+            won_games_tensor = torch.tensor(won_games, dtype=torch.float32, device=device)  # Convert to a tensor
 
-            infos = self.locals["infos"]
-            won_game = any(
-                info.get("winner", 1) == 0 for info in infos
-            )  # Assuming 'is_success' signals a win
-            self.win_history.append(1 if won_game else 0)  # 1 for win, 0 for loss
+            # Update the win history with new values in a circular manner
+            num_wins_to_add = min(len(won_games_tensor), 100)  # Prevent overflow if more than 100 new games
+            for win in won_games_tensor[:num_wins_to_add]:
+                # Subtract the old value and add the new win to the total
+                self.total_wins -= self.win_history[self.index].item()
+                self.win_history[self.index] = win
+                self.total_wins += win.item()
+                # Move to the next index (circular buffer)
+                self.index = (self.index + 1) % 100
 
-            # Calculate and log the moving average win rate over the last 100 games
-            win_rate = np.mean(self.win_history)
+            # Calculate and log the moving average win rate (SMA100)
+            win_rate = self.total_wins / 100.0
             self.logger.record("buckshot/win_rate_sma100", win_rate)
 
         # Save checkpoint at specified intervals
-        if self.n_steps % self.checkpoint_freq == 0:
-            checkpoint_path = f"ppo_checkpoint_{self.n_steps}_steps.zip"
-            self.model.save(checkpoint_path)
+        if self.n_calls % self.checkpoint_freq == 0 and self.n_calls != 0:
             self.model.save("baseline.zip")
-            print(f"Checkpoint saved at {self.n_steps} steps to {checkpoint_path}")
-
+            
         return True
 
     def _on_training_end(self) -> None:
-        # Any final operations at the end of training can be done here
         print(f"Training finished at {self.n_steps} steps.")
 
+if __name__ == '__main__':
+    # Initialize the environment
+    def make_env():
+        return BuckshotRouletteEnv()
 
-# Initialize the callback with a checkpoint frequency, e.g., save every 100,000 steps
-checkpoint_freq = 100000
-avg_reward_checkpoint_callback = AverageRewardCheckpointCallback(
-    checkpoint_freq=checkpoint_freq
-)
+    # Use SubprocVecEnv for running multiple environments in parallel
+    env = DummyVecEnv([lambda: BuckshotRouletteEnv()])
 
-# Train the agent with the callback
-agent_player_0.learn(
-    total_timesteps=n_games * batch_size,
-    reset_num_timesteps=True,
-    progress_bar=True,
-    callback=avg_reward_checkpoint_callback,  # Add the custom callback here
-)
+    # Initialize the PPO agent
+    if os.path.exists("baseline.zip"):
+        agent_player_0 = PPO.load("baseline", env, device=device)
+    else:
+        agent_player_0 = PPO(
+            MaskedActorCriticPolicy,
+            env,
+            verbose=1,
+            tensorboard_log="./log/ad_agent_player",
+            device=device,
+            n_steps=12500
+        )
 
-# Save the trained agents
-agent_player_0.save("baseline")
+    # Define the callback for saving checkpoints
+    checkpoint_freq = 100000
+    avg_reward_checkpoint_callback = AverageRewardCheckpointCallback(
+        checkpoint_freq=checkpoint_freq
+    )
 
-print("Training completed and models saved.")
+    # Train the agent
+    n_games = 1000000
+    batch_size = 75
+    agent_player_0.learn(
+        total_timesteps=n_games * batch_size,
+        reset_num_timesteps=True,
+        progress_bar=True,
+        callback=avg_reward_checkpoint_callback,
+    )
+
+    # Save the trained model
+    agent_player_0.save("baseline")
+    print("Training completed and models saved.")

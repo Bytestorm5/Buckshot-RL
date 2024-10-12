@@ -6,6 +6,7 @@ from copy import deepcopy
 from buckshot_roulette import BuckshotRoulette
 from buckshot_roulette import Items as BuckshotItems
 from buckshot_roulette.ai import Dealer as BuckshotDealer
+from buckshot_roulette.ai import Random as BuckshotRandom
 import torch
 
 
@@ -94,7 +95,7 @@ class BuckshotRouletteEnv(gym.Env):
         self.live_0 = self.game.shotgun_info()[0]
         self.live_1 = self.game.shotgun_info()[0]
 
-        self.dealer = BuckshotDealer(1)
+        self.dealer = BuckshotRandom(1)
 
     def _get_valid_action_mask(self):
         """
@@ -153,7 +154,7 @@ class BuckshotRouletteEnv(gym.Env):
         # Update the shell knowledge arrays for the current player
         self._update_shell_knowledge(chosen_move, result, known_for=current_player)
 
-        while self.game.current_turn != current_player:
+        while self.game.current_turn == 1:
             move = self.dealer.choice(self.game)
             res = self.game.make_move(move)
 
