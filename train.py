@@ -12,7 +12,8 @@ from stable_baselines3.dqn.policies import DQNPolicy
 from collections import deque
 from torch.utils.tensorboard import SummaryWriter
 
-device = "cpu" #torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = "cpu"  # torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 class MaskedActorCriticPolicy(MultiInputActorCriticPolicy):
     def forward(self, obs, deterministic=False):
@@ -87,7 +88,9 @@ class AverageRewardCheckpointCallback(BaseCallback):
         super(AverageRewardCheckpointCallback, self).__init__(verbose)
         self.checkpoint_freq = checkpoint_freq
         self.curr_game_rewards = 0
-        self.win_history = torch.zeros(100, device="cuda")  # Store the win history on GPU as a tensor
+        self.win_history = torch.zeros(
+            100, device="cuda"
+        )  # Store the win history on GPU as a tensor
         self.index = 0  # Circular index to track the position in the win history buffer
         self.total_wins = 0  # Keep track of the total number of wins in the window
 
@@ -95,16 +98,26 @@ class AverageRewardCheckpointCallback(BaseCallback):
         return True
 
     def _on_step(self) -> None:
-        infos = self.locals['infos']  # This contains information across all environments        
+        infos = self.locals[
+            "infos"
+        ]  # This contains information across all environments
 
         # Win condition tracking
-        won_games = [info["winner"] == 0 for info in infos if "winner" in info and info['winner'] is not None]
-        
+        won_games = [
+            info["winner"] == 0
+            for info in infos
+            if "winner" in info and info["winner"] is not None
+        ]
+
         if len(won_games) > 0:
-            won_games_tensor = torch.tensor(won_games, dtype=torch.float32, device=device)  # Convert to a tensor
+            won_games_tensor = torch.tensor(
+                won_games, dtype=torch.float32, device=device
+            )  # Convert to a tensor
 
             # Update the win history with new values in a circular manner
-            num_wins_to_add = min(len(won_games_tensor), 100)  # Prevent overflow if more than 100 new games
+            num_wins_to_add = min(
+                len(won_games_tensor), 100
+            )  # Prevent overflow if more than 100 new games
             for win in won_games_tensor[:num_wins_to_add]:
                 # Subtract the old value and add the new win to the total
                 self.total_wins -= self.win_history[self.index].item()
@@ -120,13 +133,14 @@ class AverageRewardCheckpointCallback(BaseCallback):
         # Save checkpoint at specified intervals
         if self.n_calls % self.checkpoint_freq == 0 and self.n_calls != 0:
             self.model.save("baseline.zip")
-            
+
         return True
 
     def _on_training_end(self) -> None:
         print(f"Training finished at {self.n_steps} steps.")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     # Initialize the environment
     def make_env():
         return BuckshotRouletteEnv()
@@ -144,7 +158,7 @@ if __name__ == '__main__':
             verbose=1,
             tensorboard_log="./log/ad_agent_player",
             device=device,
-            n_steps=12500
+            n_steps=12500,
         )
 
     # Define the callback for saving checkpoints
